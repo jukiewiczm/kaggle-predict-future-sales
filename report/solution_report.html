@@ -1,0 +1,275 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <meta name="author" content="Mateusz Jukiewicz" />
+  <meta name="date" content="2019-01-07" />
+  <title>Kaggle’s Predict Future Sales solution report</title>
+  <style type="text/css">code{white-space: pre;}</style>
+  <link rel="stylesheet" href="/Users/mjukiewicz/pandoc-bootstrap-template/template.css" />
+</head>
+<body>
+    <div class="navbar navbar-static-top">
+    <div class="navbar-inner">
+      <div class="container">
+        <span class="doc-title">Kaggle’s Predict Future Sales solution report</span>
+        <ul class="nav pull-right doc-info">
+                    <li><p class="navbar-text">Mateusz Jukiewicz</p></li>
+                              <li><p class="navbar-text">January 7, 2019</p></li>
+                  </ul>
+      </div>
+    </div>
+  </div>
+    <div class="container">
+    <div class="row">
+            <div id="TOC" class="span3">
+        <div class="well toc">
+        <ul>
+          <li class="nav-header">Table of Contents</li>
+        </ul>
+        <ul>
+        <li><a href="#introduction">Introduction</a></li>
+        <li><a href="#competition-overview">Competition overview</a></li>
+        <li><a href="#solution-description">Solution description</a><ul>
+        <li><a href="#solution-note">Solution note</a></li>
+        <li><a href="#input-data">Input data</a></li>
+        <li><a href="#initial-ideas-challenges">Initial ideas &amp; challenges</a></li>
+        <li><a href="#exploratory-data-analysis">Exploratory data analysis</a><ul>
+        <li><a href="#total-sales-by-shop-by-year">Total sales by shop by year</a></li>
+        </ul></li>
+        <li><a href="#evaluation-validation">Evaluation / Validation</a></li>
+        <li><a href="#preprocessing-feature-engineering">Preprocessing &amp; Feature Engineering</a><ul>
+        <li><a href="#preprocessing">Preprocessing</a></li>
+        <li><a href="#feature-engineering">Feature Engineering</a></li>
+        </ul></li>
+        <li><a href="#modeling">Modeling</a><ul>
+        <li><a href="#initial-model">Initial model</a></li>
+        <li><a href="#dense-embedding-of-itemsshopscategories">Dense embedding of items/shops/categories</a></li>
+        <li><a href="#pytorch-embedding-neural-net">PyTorch embedding neural net</a></li>
+        <li><a href="#pytorch-lstm-net">PyTorch LSTM net</a></li>
+        </ul></li>
+        </ul></li>
+        <li><a href="#results">Results</a></li>
+        <li><a href="#performance-improvements">Performance improvements</a></li>
+        <li><a href="#summary">Summary</a></li>
+        </ul>
+        </div>
+      </div>
+            <div class="span9">
+            <h2 id="introduction">Introduction</h2>
+<p>This report summarizes my attempt to solve the “Predict Future Sales” competition hosted by Kaggle.</p>
+<h2 id="competition-overview">Competition overview</h2>
+<p>The task in the competition is to predict monthly sales for a combination of items and shops. Competitors are provided with daily sales data for certain shops and items. The evaluation metric for the competition is Root Mean Squared Error (RMSE).</p>
+<p>For more information, see <a href="https://www.kaggle.com/c/competitive-data-science-predict-future-sales" class="uri">https://www.kaggle.com/c/competitive-data-science-predict-future-sales</a>.</p>
+<h2 id="solution-description">Solution description</h2>
+<h4 id="solution-note">Solution note</h4>
+<p>The solution described in this report is rather a fast-paced one (Christmas/New Year break not being the best time to work on a Kaggle competition :-) ). Therefore, it is not focused on stuff that is usually heavily explored in competitions, namely:</p>
+<ul>
+<li>Extensive feature selection &amp; engineering</li>
+<li>Hyperparameter tuning</li>
+<li>Complex ensemble modeling</li>
+</ul>
+<p>Instead, my main goal was to firstly obtain a reasonably good result, and then to explore some approaches that I thought are novel and not explored by other competitors (at least according to competition kernels/discussions).</p>
+<h3 id="input-data">Input data</h3>
+<p>There are 6 files provided by the competition organizer:</p>
+<ul>
+<li>sales_train.csv - daily historical sales data from January 2013 to October 2015.</li>
+<li>test.csv - the test set with item/shop combinations from November 2015, for which sales have to be predicted</li>
+<li>sample_submission.csv - a sample submission file in the correct format</li>
+<li>items.csv - supplementary information about the items</li>
+<li>item_categories.csv - supplementary information about the items categories</li>
+<li>shops.csv- supplementary information about the shops</li>
+</ul>
+<h3 id="initial-ideas-challenges">Initial ideas &amp; challenges</h3>
+<p>The first thing to consider is the best way to process the datasets in order to make successful predictions. Since the training data is a daily based time series, and the test data is monthly-based, several options came to my mind:</p>
+<ol type="1">
+<li>Data granularity
+<ol type="1">
+<li>Daily based training / daily based prediction / aggregation of predictions to monthly format</li>
+<li>Monthly based training by training data aggregation / monthly predictions</li>
+</ol></li>
+<li>Observations ordering
+<ol type="1">
+<li>Classic approach - neglect the order and train as independent observations</li>
+<li>Time series approach - sequence based algorithms (ARIMA, RNNs)</li>
+</ol></li>
+</ol>
+<p>Every option has some benefits and drawbacks. I decided not to pursue with daily data approach, because that would require artificially creating days for the test set and then aggregating them back to monthly sales. Doesn’t seem like a perfectly reasonable approach. Additionally, creating a proper validation setup would also be challenging.</p>
+<p>I also did not pursue the time series approach, since the data looks like lots of short time series (shop/item combinations) instead of a standard time series (like stock price for one company). Since I’m not very experienced at TSA, it seemed a bit overwhelming. Additionally, since the time series were short, it simply didn’t seem worth it to begin with this approach (I might explore it in future).</p>
+<p>Taking above into account, I decided to go with monthly-aggregated non-sequenced approach, so basically the simplest one. Seemed like the most reasonable to begin with.</p>
+<h3 id="exploratory-data-analysis">Exploratory data analysis</h3>
+<p>I performed some basic EDA to check if the data looks reasonable and there are no obvious errors.</p>
+<p>The very important insights I got from EDA regarded to item/shop combinations for train and test sets:</p>
+<ul>
+<li>test set has combinations of all shop/items for a month, so the train data has to be processed accordingly in order to obtain proper validation setup</li>
+<li>it’s not reasonable to predict only known item/shop combinations, because the monthly variability of these is too high</li>
+</ul>
+<p>The rest of the data was rather unsurprising (fortunately!). Some of the interesting facts are the following:</p>
+<ul>
+<li>The sales trend is getting lower every year</li>
+<li>The most expensive item sold was a software licence pack with over 500 licences</li>
+<li>The most frequently sold item is a plastic bag</li>
+<li>The item with most varying price is a credit card payment (or a gift card, I’m not 100% sure)</li>
+</ul>
+<h5 id="sales-for-each-year">Sales for each year</h5>
+<figure>
+<img src="figures/sales-through-year.png" alt="Sales for each year" /><figcaption>Sales for each year</figcaption>
+</figure>
+<h4 id="total-sales-by-shop-by-year">Total sales by shop by year</h4>
+<figure>
+<img src="figures/sales_by_shop_by_year.png" alt="Sales by shop by year" /><figcaption>Sales by shop by year</figcaption>
+</figure>
+<p>The full EDA report is available as a <a href="../eda/basic_datasets_overview.ipynb">Jupyter Notebook</a> or <a href="../eda/basic_datasets_overview.html">HTML file</a> (there are some interactive plots not shown here).</p>
+<h3 id="evaluation-validation">Evaluation / Validation</h3>
+<p>Since the competition data is a time series, the observations are not independent, as is usually assumed in classic problems. Therefore, a standard random hold-out/cross-validation setup would not be proper here, as it would yield biased results. What is needed is a time aware splitting procedure.</p>
+<p>For validating the models built, I implemented two time aware validation procedures:</p>
+<ul>
+<li>Simple holdout - the faster method for quick validation. I performed training on <code>X</code> months, then I performed validation on the consecutive month. E.g. training: Jan 2015 - Sep 2015, validation: Oct 2015.</li>
+<li>Time aware cross validation - more extensive validation, where train set width and test set width (in months) has to be specified, as well as the number of iterations. The training/validation is then performed similarly to the method above, but repeated many times for different date ranges. This one reports more detailed information about estimated evaluation metric.</li>
+</ul>
+<p>The implementation of the validation procedures is available at <a href="../modeling/model_validation.py" class="uri">../modeling/model_validation.py</a>.</p>
+<h3 id="preprocessing-feature-engineering">Preprocessing &amp; Feature Engineering</h3>
+<p>I implemented the preprocessing/feature engineering procedure in Spark Scala. The code is available at <a href="../scala/preprocess_data.scala" class="uri">../scala/preprocess_data.scala</a>.</p>
+<h4 id="preprocessing">Preprocessing</h4>
+<p>The most important preprocessing steps were:</p>
+<ul>
+<li>aggregating the data from the daily basis to monthly basis</li>
+<li>extending the training set to contain all item/shop combinations per month</li>
+<li>filling test data and combining it with training data for feature engineering process</li>
+</ul>
+<p>I also performed some standard stuff like year/month extraction, etc. The rest of the processing is contained in Feature Engineering section.</p>
+<h4 id="feature-engineering">Feature Engineering</h4>
+<p>When it comes to feature engineering, one must be very careful when working on time series data and watch out for proper ordering. It is very easy to ‘leak’ some information from future observations and get biased estimates because of that.</p>
+<p>Thankfully, spark has nicely working and pretty intuitive window functions, which made this process pretty much seamless.</p>
+<p>I created a number of features, amongst them:</p>
+<ul>
+<li>previous item shop sales (1-2-3 periods back)</li>
+<li>number of times an item was sold previously</li>
+<li>previous mean price for item/shop combination</li>
+<li>previous mean price for item (in general, without relating it to any particular shop)</li>
+<li>previous item’s category price</li>
+<li>and more</li>
+</ul>
+<p>Please check the script file to see all features implemented.</p>
+<h5 id="finding-out-new-features">Finding out new features</h5>
+<p>One of the interesting approaches I used to find out new features was evaluating the model manually. This is a very useful technique that I believe is undervalued. It is especially useful when features can be interpreted by a human being.</p>
+<p>The procedure looked as follows:</p>
+<ul>
+<li>Train the model on current dataset</li>
+<li>Perform predictions on validation set</li>
+<li>Take few observations with biggest error and try to find out why the model make a mistake</li>
+<li>In case of any ideas, design and implement new features</li>
+<li>Repeat</li>
+</ul>
+<p>During this procedure I found several really nicely working features. I later found many similar features in other competitors’ kernels!</p>
+<p>Unfortunately, I kind of handcrafted the procedure so it’s not implemented in the project.</p>
+<h3 id="modeling">Modeling</h3>
+<h4 id="initial-model">Initial model</h4>
+<p>Initially, I ran training on very basic features (<code>date_block_num, month, year, item_id, shop_id</code>) without any feature engineering using <code>xgboost</code> without any hyperparameter tuning.</p>
+<p>This gave me the result of <code>1.10619</code> on the public leaderboard and around <code>1.08</code> on my quick validation procedure (which I believe is pretty acceptable difference). #### Model with feature engineering After adding the features crafted in Spark/Scala script and using the same model, my public leaderboard score jumped to <code>0.94416</code> on the public leaderboard (again around <code>0.02</code> worse than my internal validation).</p>
+<h4 id="dense-embedding-of-itemsshopscategories">Dense embedding of items/shops/categories</h4>
+<p>Things get more interesting here. One of the competition challenges was that there are lots of different items (around 22k). Obviously, adding item information to the dataset is crucial. I was not satisfied in label encoding since this was a categorical and not an ordinal feature. One hot encoding was also a pretty bad option since it would create very wide and very sparse dataset, creating both computational and predictive performance problems.</p>
+<p>Therefore, I decided that I will try to create dense embeddings of items/shops/item_categories from their descriptions available in supplementary datasets. This has several benefits:</p>
+<ul>
+<li>dense vectors of much lower dimensionality (finally, I used a dimension of 20 for every dataset, resulting of 60 features for shops+items+categories)</li>
+<li>since the features were text based, there was a possibility that the model would gain predictive power to never seen items utilizing the fact that the description of item/shop was similar to previously seen ones</li>
+</ul>
+<p>To implement this idea, I used <code>Word2Vec</code> algorithm using <code>gensim</code> library (super fast and easy to use). The implementation of the idea is available at <a href="../categorical_variables_embeddings/generate_dense_datasets.py" class="uri">../categorical_variables_embeddings/generate_dense_datasets.py</a>.</p>
+<p>After adding the dense representations and training the xgboost model only on data from 2015, I managed to get a score of <code>0.92882</code> on the public leaderboard.</p>
+<p><em>Note: To be honest, I used only 2015 data due to speed reasons, but it turned out to work better than using the whole dataset. I still believe that full data could be utilized with more careful hyperparameter tuning.</em></p>
+<h4 id="pytorch-embedding-neural-net">PyTorch embedding neural net</h4>
+<p>Another idea of generating dense representations for shops/items/categories was to use embedding layers in neural network. I though that it might be a good idea to let the model learn the embeddings itself from the existing data. The network seem to work pretty good, achieving slightly better performance than <code>xgboost</code> in my internal validation. Later on, I decided to combine both dense vector approaches and used the following ‘feature set’:</p>
+<ul>
+<li>All features crafted in scala script</li>
+<li>Dense features learned by gensim</li>
+<li>Dense features learned by internal embedding layers</li>
+</ul>
+<p>I implemented this network in <code>PyTorch</code>, which is powerful and very intuitive library for building neural networks.</p>
+<p>The full implementation is available at <a href="../modeling/models/torch_embedding_net.py" class="uri">../modeling/models/torch_embedding_net.py</a>.</p>
+<p>The code to implement the whole network architecture was as simple as that:</p>
+<pre class="pythonstub"><code>class EmbeddingNet(torch.nn.Module):
+    def __init__(self, items_path, items_categories_path, shops_path):
+        super(EmbeddingNet, self).__init__()
+
+        self.device = torch.device(&#39;cuda&#39;)
+        self.cols_in_order = [&#39;item_id&#39;, &#39;item_category_id&#39;, &#39;shop_id&#39;]
+        self.cols_rest = None
+        self.standardizer = StandardScaler()
+
+        items = pd.read_csv(items_path)
+        items_categories = pd.read_csv(items_categories_path)
+        shops = pd.read_csv(shops_path)
+
+        embeds_size = 20
+        other_features_num = 98
+        other_features_out = 196
+
+        items_size = items.shape[0]
+        items_categories_size = items_categories.shape[0]
+        shops_size = shops.shape[0]
+
+        self.embedding_items = torch.nn.Embedding(items_size, embeds_size)
+        self.embedding_categories = torch.nn.Embedding(items_categories_size, embeds_size)
+        self.embedding_shops = torch.nn.Embedding(shops_size, embeds_size)
+        self.input_rest = torch.nn.Linear(other_features_num, other_features_out)
+        self.hidden_concat = torch.nn.Linear(embeds_size * 3 + other_features_out, 50)
+        self.final = torch.nn.Linear(50, 1)</code></pre>
+<p>After a bit of work with the optimizer (setting proper learning rate and number of epochs), I managed to get a leaderboard score of <code>0.90933</code>, while my internal validation score was around <code>0.89</code>.</p>
+<h4 id="pytorch-lstm-net">PyTorch LSTM net</h4>
+<p>Finally, I decided to utilize the ordered nature of the data and built a lstm-based neural network. Unfortunately, I did not have enough time to fully implement it. I might explore that path in future (I know how to make it work, just need some time for coding :-)</p>
+<p>Nevertheless, a very raw version of it is available at <a href="../modeling/models/scratch_torch_lstm_net.py" class="uri">../modeling/models/scratch_torch_lstm_net.py</a>.</p>
+<h2 id="results">Results</h2>
+<p>The summary of the results I obtained look as follows:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th style="text-align: right;">Public leaderboard score</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Initial xgboost</td>
+<td style="text-align: right;">1.10619</td>
+</tr>
+<tr class="even">
+<td>xgboost + engineered features</td>
+<td style="text-align: right;">0.94416</td>
+</tr>
+<tr class="odd">
+<td>xgboost + eng feats + dense feats</td>
+<td style="text-align: right;">0.92882</td>
+</tr>
+<tr class="even">
+<td>PyTorch embedding net</td>
+<td style="text-align: right;">0.90933</td>
+</tr>
+<tr class="odd">
+<td>Best xgb and Best PyTorch Mean*</td>
+<td style="text-align: right;">0.90326</td>
+</tr>
+</tbody>
+</table>
+<p>* As my last submission, I decided to prepare super-simple stacking where I took best xgboost result and best PyTorch result and simply averaged them (they’re totally different models so possibly good ensembling candidates). This turned out to bump up the score a little bit!</p>
+<h2 id="performance-improvements">Performance improvements</h2>
+<p>Although the initial dataset was pretty small, after extending it with all items/shops combinations and new features I started running into memory/speed problems. I used the following technologies to work around this:</p>
+<ul>
+<li>Spark Scala (also useful for standalone applications!)</li>
+<li>Using parquet file format to move data around</li>
+<li>Dask (parallelized, off-memory DataFrames)</li>
+<li>xgboost trained on GPU</li>
+<li>running neural nets training on GPU (kind of obvious improvement)</li>
+</ul>
+<h2 id="summary">Summary</h2>
+<p>Working on this competition was pretty fun, I reminded myself/learned some stuff about working with time series datasets.</p>
+<p>Finally, while writing this report, I had 152nd place in the competition, which is not bad. I believe I could improve even better with some more competition-typical stuff (hyperparameter tuning, ensembles, etc.)</p>
+<figure>
+<img src="figures/kaggle.png" alt="Kaggle Place" /><figcaption>Kaggle Place</figcaption>
+</figure>
+            </div>
+    </div>
+  </div>
+</body>
+</html>

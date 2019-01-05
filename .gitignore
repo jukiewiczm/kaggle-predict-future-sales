@@ -1,0 +1,7 @@
+.ipynb_checkpoints
+.idea
+data/*
+!data/README.md
+submissions/*
+!submissions/README.md
+envs/
