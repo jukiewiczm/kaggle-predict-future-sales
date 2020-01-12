@@ -4,4 +4,6 @@ data/*
 !data/README.md
 submissions/*
 !submissions/README.md
-envs/
+env/
+*.pyc
+*.png

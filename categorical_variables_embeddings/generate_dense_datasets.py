@@ -1,11 +1,15 @@
 import logging
 import re
+import os
 
 import gensim
 import pandas as pd
 import numpy as np
 from abc import ABC, abstractmethod
 
+# in order to use starspace, you need to install it using bin/install_starspace.sh
+# unfortunately, it won't be visible in an IDE
+import starwrap as sw
 
 class SentencesProcessorIterator:
     def __init__(self, sentences):
@@ -112,6 +116,50 @@ class FileBasedDenseGenerator(DenseDatasetGenerator):
         return np.array(list(self.word_vecs_dict.values()), dtype='float32').mean(axis=0)
 
 
+class StarspaceDenseGenerator(DenseDatasetGenerator):
+
+    def transform(self, dataset, id_attr, sentence_attr):
+        processed_sentences = self._extract_processed_sentences(dataset, sentence_attr)
+        ids = dataset[id_attr].tolist()
+        concatenated = [" ".join(s) + f" __label__{i}\n" for s, i in zip(processed_sentences, ids)]
+        with open("tmp_sentences.txt", "w") as f_out:
+            f_out.writelines(concatenated)
+        arg = sw.args()
+        arg.trainFile = "tmp_sentences.txt"
+        arg.trainMode = 0
+        arg.epoch = 20
+        arg.dim = 300
+        # arg.trainWord = 1???????????????????
+        sp = sw.starSpace(arg)
+        sp.init()
+        sp.train()
+        sp.saveModelTsv("tmp_embeds.tsv")
+        embeddings = []
+
+        with open("tmp_embeds.tsv", "r") as f_in:
+            for line in f_in:
+                if "__label__" in line:
+                    split_line = line.split()
+                    split_line[0] = int(split_line[0].replace("__label__", ""))
+                    split_line[1:] = [float(num) for num in split_line[1:]]
+                    embeddings.append(split_line)
+
+        sentence_vectors = pd.DataFrame(embeddings)
+        sentence_vectors.columns = [id_attr] + ["{}_{}".format(id_attr, c) for c in range(300)]
+        sentence_vectors.sort_values(id_attr, inplace=True)
+
+        os.remove("tmp_sentences.txt")
+        os.remove("tmp_embeds.tsv")
+
+        return sentence_vectors
+
+    def _get_vectors_container(self, processed_sentences):
+        pass
+
+    def _get_mean_vector(self, vectors_container):
+        return vectors_container.vectors.mean(axis=0)
+
+
 def produce_dense_dataset(generator, input_path, id_attr_name, sentence_attr_name, output_path):
     dataset = pd.read_csv(input_path)
     dataset_dense = generator.transform(dataset, id_attr_name, sentence_attr_name)
@@ -123,10 +171,11 @@ if __name__ == "__main__":
 
     # *** Choose your generator
     # generator = GensimDenseGenerator()
-    generator = FileBasedDenseGenerator("data/wiki.ru.vec")
+    # generator = FileBasedDenseGenerator("data/wiki.ru.vec")
+    generator = StarspaceDenseGenerator()
     # ***
 
-    produce_dense_dataset(generator, "data/items.csv", 'item_id', 'item_name', "data/gensim_items_dense.parquet")
+    produce_dense_dataset(generator, "data/items.csv", 'item_id', 'item_name', "data/starspace_items_dense.parquet")
     produce_dense_dataset(generator, "data/item_categories.csv", 'item_category_id', 'item_category_name',
-                          "data/gensim_items_categories_dense.parquet")
-    produce_dense_dataset(generator, "data/shops.csv", 'shop_id', 'shop_name', "data/gensim_shops_dense.parquet")
+                          "data/starspace_items_categories_dense.parquet")
+    produce_dense_dataset(generator, "data/shops.csv", 'shop_id', 'shop_name', "data/starspace_shops_dense.parquet")
