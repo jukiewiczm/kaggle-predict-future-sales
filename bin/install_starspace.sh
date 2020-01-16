@@ -4,7 +4,7 @@ eval "$(conda shell.bash hook)"
 
 set -e
 
-# set the ENV_PATH variable to your conda environment directory
+# set the ENV_PATH variable to an absolute path of your conda environment directory
 ENV_PATH=# enter your path here
 
 START_PWD=$(pwd)
