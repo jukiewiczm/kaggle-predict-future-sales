@@ -2,18 +2,16 @@ import numpy as np
 import torch
 from sklearn.preprocessing import StandardScaler
 from collections import defaultdict, OrderedDict
-from modeling.models.rnn.rnn_dataset import RNNDataset
 
 
 class RNNDataPreprocessor:
     """ This class handles data preparation and preprocessing for lstm model. """
 
-    def __init__(self, dense_sets_holder):
+    def __init__(self):
 
         self.index_colnames = ['item_id', 'item_category_id', 'shop_id']
         self.data_colnames = None
 
-        self.dense_sets_holder = dense_sets_holder
         self.reference_dict = None
 
         self.preproc_mean = None
@@ -75,9 +73,7 @@ class RNNDataPreprocessor:
             labels.append(torch.Tensor(label_series))
             lens.append(len(row_series))
 
-        lstm_dataset = RNNDataset(inputs, lens, labels, self.dense_sets_holder)
-
-        return lstm_dataset
+        return inputs, lens, labels
 
     def preprocess_test_dataset(self, dataset):
         assert self.reference_dict is not None, "Train dataset must be preprocessed before test dataset."
@@ -101,6 +97,5 @@ class RNNDataPreprocessor:
         # Prepare tensor-based RNN dataset
         inputs = [torch.Tensor(line) for line in dataset_dict.values()]
         lens = [x.shape[0] for x in inputs]
-        lstm_dataset = RNNDataset(inputs, lens, None, self.dense_sets_holder)
 
-        return lstm_dataset
+        return inputs, lens, None
