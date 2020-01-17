@@ -11,11 +11,20 @@ class OneSetValidation:
         self.model = model
         self.metric = metric
 
-    def run(self, train, test, copy=False):
+    def run(self, train, test, inner_train_validation=True, copy=False):
+        """
+        :param inner_train_validation if this flag is set, you will see validation result during training, but it will
+        take longer to train the model
+        :param copy: if input sets should stay untouched (not modified in place) after the process, use this flag.
+        Warning: the process will take more memory with this flag on.
+        """
         y_train, train = self.data_target_split(train, copy)
         y_test, test = self.data_target_split(test, copy)
 
-        self.model.fit(train, y_train, (test, y_test))
+        if inner_train_validation:
+            self.model.fit(train, y_train, (test, y_test))
+        else:
+            self.model.fit(train, y_train)
 
         predictions = self.model.transform(test)
 
@@ -38,19 +47,20 @@ class TimeBasedValidation:
         self.time_column_name = time_column_name
         self.one_set_validation = OneSetValidation(target_col, model, metric)
 
-    def run(self, train_set, train_period, test_period, num_splits, copy=False):
+    def run(self, train_set, train_period, test_period, num_splits, inner_train_validation=True):
         time_values = train_set[self.time_column_name].drop_duplicates().sort_values(ascending=False)
 
         scores = []
-
         for i in range(num_splits):
             test_max, test_min = time_values.iloc[i], time_values.iloc[i+test_period-1]
             train_max, train_min = time_values.iloc[i+test_period], time_values.iloc[i+test_period+train_period-1]
 
-            train_subset = train_set[train_set[self.time_column_name].between(train_min, train_max)]
-            test_subset = train_set[train_set[self.time_column_name].between(test_min, test_max)]
+            # Explicit copy to avoid the "assignment on copy" warning
+            train_subset = train_set[train_set[self.time_column_name].between(train_min, train_max)].copy()
+            test_subset = train_set[train_set[self.time_column_name].between(test_min, test_max)].copy()
 
-            scores.append(self.one_set_validation.run(train_subset, test_subset, copy))
+            scores.append(self.one_set_validation.run(train_subset, test_subset, inner_train_validation))
+            del train_subset, test_subset
 
         result = np.array(scores)
 
@@ -86,8 +96,9 @@ if __name__ == "__main__":
 
     print("Time taken: {}s".format(str(end - start)))
 
-    # For now, as the RNN model is memory extensive, give up on the multi period validation.
-    # full_train_set = valid_train_set.append(valid_test_set, ignore_index=True)
-    # multi_period_validation = TimeBasedValidation(target_col, model, 'date_block_num')
-    # multi_eval_result = multi_period_validation.run(full_train_set, 29, 1, 5, True)
-    # print("Multi evaluation result:\n", multi_eval_result)
+    full_train_set = valid_train_set.append(valid_test_set, ignore_index=True)
+    del valid_train_set, valid_test_set
+
+    multi_period_validation = TimeBasedValidation(target_col, model, 'date_block_num')
+    multi_eval_result = multi_period_validation.run(full_train_set, 30, 1, 4, False)
+    print("Multi evaluation result:\n", multi_eval_result)

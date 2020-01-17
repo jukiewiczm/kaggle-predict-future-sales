@@ -88,7 +88,7 @@ if __name__ == "__main__":
     score_func = get_score_function(model, cols, constant_data, evaluate_embeddings)
 
     base_score, score_decreases = get_score_importances(
-           score_func, score_set.values, score_y.values, random_state=234234, n_iter=1
+           score_func, score_set.to_numpy(), score_y.to_numpy(), random_state=234234, n_iter=1
     )
 
     feature_importances = np.mean(score_decreases, axis=0)

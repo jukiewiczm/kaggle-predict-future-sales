@@ -28,10 +28,10 @@ class RNNDataPreprocessor:
                 dataset[col] = np.log(dataset[col] + 1e-3)
 
         if fit_standardizer:
-            self.standardizer.fit(dataset[self.data_colnames].values)
+            self.standardizer.fit(dataset[self.data_colnames].to_numpy())
 
         # Use the standardizer
-        dataset[self.data_colnames] = self.standardizer.transform(dataset[self.data_colnames].values)
+        dataset[self.data_colnames] = self.standardizer.transform(dataset[self.data_colnames].to_numpy())
 
         # Fill NA's introduced in dataset preparation procedure in Spark
         dataset.fillna(0, inplace=True)
@@ -51,7 +51,7 @@ class RNNDataPreprocessor:
         # When preprocessing training, we care about the time order (as we'll be creating time series), hence the sort.
         # In addition, the copy here is made so source dataset will not be changed.
         dataset = dataset.sort_values(['date_block_num'])
-        y_dataset = y_dataset.values[dataset.index].squeeze().tolist()
+        y_dataset = y_dataset.loc[dataset.index].to_numpy().squeeze().tolist()
 
         dataset = self.preprocess_common(dataset)
 

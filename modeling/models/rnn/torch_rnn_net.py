@@ -209,7 +209,7 @@ class RNNNet(torch.nn.Module, Model):
                         results = self.transform(test_loader, False, False)
 
                         test_loss = torch.sqrt(
-                            F.mse_loss(results.clamp(0, 20), torch.Tensor(y_test.values).squeeze())
+                            F.mse_loss(results.clamp(0, 20), torch.Tensor(y_test.to_numpy()).squeeze())
                         ).item()
 
                         test_losses.append(test_loss)

@@ -28,7 +28,7 @@ class DenseSetsHolder:
         fit_dataset = dataset.merge(ids.reset_index(), on=id_attr_name).\
             sort_values(id_attr_name).drop([id_attr_name, "index"], axis=1)
         dataset = dataset.sort_values(id_attr_name).drop(id_attr_name, axis=1)
-        scaler = DenseSetsHolder.standardize(fit_dataset.values)
-        dataset = torch.Tensor(scaler.transform(dataset.values))
+        scaler = DenseSetsHolder.standardize(fit_dataset.to_numpy())
+        dataset = torch.Tensor(scaler.transform(dataset.to_numpy()))
 
         return dataset

@@ -23,7 +23,7 @@ class RNNDataset(Dataset):
 
         mixed = (items_lookup + items_categories_lookup + shops_lookup) / 3.0
 
-        train = self.train[idx]
+        train = torch.cat([train, items_lookup, items_categories_lookup, shops_lookup], dim=1)
 
         train = torch.cat([train, mixed], dim=1)
 

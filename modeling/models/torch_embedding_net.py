@@ -59,8 +59,8 @@ class EmbeddingNet(torch.nn.Module, Model):
         return input_concat
 
     def preprocess_data(self, dataset):
-        index_cols = dataset[self.cols_in_order].values
-        normalized_cols = self.standardizer.transform(dataset[self.cols_rest].values)
+        index_cols = dataset[self.cols_in_order].to_numpy()
+        normalized_cols = self.standardizer.transform(dataset[self.cols_rest].to_numpy())
         normalized = np.concatenate([index_cols, normalized_cols], axis=1)
         normalized_wo_nan = np.nan_to_num(normalized)
         return torch.from_numpy(normalized_wo_nan).float().to(self.device)
@@ -73,18 +73,18 @@ class EmbeddingNet(torch.nn.Module, Model):
         batch_report_interval = batches_num // 4
 
         self.cols_rest = sorted(list(set(train.columns.tolist()) - set(self.cols_in_order)))
-        self.standardizer.fit(train[self.cols_rest].values)
+        self.standardizer.fit(train[self.cols_rest].to_numpy())
 
         train_processed = self.preprocess_data(train)
 
-        train_dataset = TensorDataset(train_processed, torch.from_numpy(y_train.values).to(self.device).float())
+        train_dataset = TensorDataset(train_processed, torch.from_numpy(y_train.to_numpy()).to(self.device).float())
 
         loader_train = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
         valid_set_tuple_postproc = None
         if valid_set_tuple:
             test, y_test = valid_set_tuple
-            valid_set_tuple_postproc = self.preprocess_data(test), torch.Tensor(y_test.values).squeeze()
+            valid_set_tuple_postproc = self.preprocess_data(test), torch.Tensor(y_test.to_numpy()).squeeze()
 
         self.zero_grad()
         self.train()
