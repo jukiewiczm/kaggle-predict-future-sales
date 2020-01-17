@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import re
 import pandas as pd
+import numpy as np
 
 
 class SentencesProcessorIterator:

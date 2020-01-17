@@ -5,11 +5,10 @@ import gensim
 import pandas as pd
 import numpy as np
 
-from modeling.utils import read_parquet
 from categorical_variables_embeddings.dense_dataset_generator import DenseDatasetGenerator
 
-# in order to use starspace, you need to install it using bin/install_starspace.sh
-# unfortunately, it won't be visible in an IDE
+# In order to use starspace, you need to install it using bin/install_starspace.sh.
+# Unfortunately, it won't be visible in an IDE. If you're not going to use starspace, just comment this import.
 import starwrap as sw
 
 
@@ -64,36 +63,26 @@ class FileBasedDenseGenerator(DenseDatasetGenerator):
 
 
 class StarspaceDenseGenerator(DenseDatasetGenerator):
+    def __init__(self, embeds_size=50, epochs=20):
+        self.embeds_size = embeds_size
+        self.epochs = epochs
 
-    def transform(self, dataset, id_attr, sentence_attr):
-        processed_sentences = self._extract_processed_sentences(dataset, sentence_attr)
-        ids = dataset[id_attr].tolist()
-        concatenated = [" ".join(s) + f" __label__{i}\n" for s, i in zip(processed_sentences, ids)]
+    def _get_vectors_container(self, processed_sentences):
+        concatenated = [" ".join(s) + f" __label__{i}\n" for i, s in enumerate(processed_sentences)]
+
         with open("tmp_sentences.txt", "w") as f_out:
             f_out.writelines(concatenated)
+
         arg = sw.args()
         arg.trainFile = "tmp_sentences.txt"
         arg.trainMode = 0
-        arg.epoch = 20
-        arg.dim = 50
+        arg.epoch = self.epochs
+        arg.dim = self.embeds_size
         arg.similarity = "dot"
         sp = sw.starSpace(arg)
         sp.init()
         sp.train()
         sp.saveModelTsv("tmp_embeds.tsv")
-
-        # embeddings = []
-        # with open("tmp_embeds.tsv", "r") as f_in:
-        #     for line in f_in:
-        #         if "__label__" in line:
-        #             split_line = line.split()
-        #             split_line[0] = int(split_line[0].replace("__label__", ""))
-        #             split_line[1:] = [float(num) for num in split_line[1:]]
-        #             embeddings.append(split_line)
-        #
-        # sentence_vectors = pd.DataFrame(embeddings)
-        # sentence_vectors.columns = [id_attr] + ["{}_{}".format(id_attr, c) for c in range(50)]
-        # sentence_vectors.sort_values(id_attr, inplace=True)
 
         vectors_container = {}
         with open("tmp_embeds.tsv", "r") as f_in:
@@ -104,116 +93,10 @@ class StarspaceDenseGenerator(DenseDatasetGenerator):
                     embedding = np.array([float(num) for num in split_line[1:]])
                     vectors_container[key] = embedding
 
-        mean_vec = self._get_mean_vector(vectors_container)
-        sentence_vectors = []
-        for words in processed_sentences:
-            word_vecs = []
-            for w in words:
-                if w in vectors_container:
-                    word_vecs.append(vectors_container[w])
-
-            if len(word_vecs) > 0:
-                sentence_vectors.append(np.array(word_vecs).mean(axis=0))
-            else:
-                sentence_vectors.append(mean_vec)
-
-        sentence_vectors = pd.DataFrame(np.array(sentence_vectors))
-        sentence_vectors.columns = ["{}_{}".format(id_attr, c) for c in sentence_vectors.columns]
-        sentence_vectors[id_attr] = dataset[id_attr].to_numpy()
-
         os.remove("tmp_sentences.txt")
         os.remove("tmp_embeds.tsv")
 
-        return sentence_vectors
-
-    def _get_vectors_container(self, processed_sentences):
-        pass
-
-
-class StarspaceDenseGeneratorLabelDoc(DenseDatasetGenerator):
-    def __init__(self, items_path, items_categories_path, shops_path, train_path, test_path):
-        self.fitted = False
-        self.word_vecs_dict = None
-
-        self.items = pd.read_csv(items_path)
-        self.items['item_name'] = list(self._extract_processed_sentences(self.items, 'item_name'))
-
-        self.items_categories = pd.read_csv(items_categories_path)
-        self.items_categories['item_category_name'] = list(
-            self._extract_processed_sentences(self.items_categories, 'item_category_name')
-        )
-
-        self.shops = pd.read_csv(shops_path)
-        self.shops['shop_name'] = list(self._extract_processed_sentences(self.shops, 'shop_name'))
-
-        train = self.read_index_cols(train_path)
-        test = self.read_index_cols(test_path)
-
-        self.dataset = pd.concat([train, test]).drop_duplicates().reset_index(drop=True)
-
-    def _get_vectors_container(self, processed_sentences):
-        if not self.fitted:
-            # Learning items to shops
-            # Learning items to item categories
-            shop_items = (
-                self.dataset[["item_id", "shop_id"]]
-                    .drop_duplicates()
-                    .merge(self.items, on="item_id")
-                    .merge(self.shops, on="shop_id")[["item_name", "shop_name"]]
-                    .to_numpy()
-                    .tolist()
-                )
-            shop_items_processed = [
-                "\t".join((" ".join(item), " ".join(("__label__" + s for s in shop)))) + "\n"
-                for item, shop in shop_items
-            ]
-
-            categories_items = (
-                self.items
-                    .merge(self.items_categories, on="item_category_id")[["item_name", "item_category_name"]]
-                    .to_numpy()
-                    .tolist()
-                )
-            categories_items_processed = [
-                "\t".join((" ".join(item), " ".join(("__label__" + c for c in cat)))) + "\n"
-                for item, cat in categories_items
-            ]
-
-            with open("tmp_sentences.txt", "w") as f_out:
-                f_out.writelines(shop_items_processed + categories_items_processed)
-
-            arg = sw.args()
-            arg.trainFile = "tmp_sentences.txt"
-            arg.trainMode = 0
-            arg.fileFormat = "labelDoc"
-            arg.epoch = 5
-            arg.dim = 50
-            arg.similarity = "dot"
-            sp = sw.starSpace(arg)
-            sp.init()
-            sp.train()
-            sp.saveModelTsv("tmp_embeds.tsv")
-
-            vectors_container = {}
-            with open("tmp_embeds.tsv", "r") as f_in:
-                for line in f_in:
-                    split_line = line.split()
-                    key = split_line[0].replace("__label__", "")
-                    embedding = np.array([float(num) for num in split_line[1:]])
-                    # If the embedding is both input and label, average them
-                    if key not in vectors_container:
-                        vectors_container[key] = embedding
-                    else:
-                        vectors_container[key] = (vectors_container[key] + embedding) / 2
-
-            self.fitted = True
-            self.word_vecs_dict = vectors_container
-
-        return self.word_vecs_dict
-
-    @staticmethod
-    def read_index_cols(path):
-        return read_parquet(path)[['item_id', 'item_category_id', 'shop_id']]
+        return vectors_container
 
 
 def produce_dense_dataset(generator, input_path, id_attr_name, sentence_attr_name, output_path):
@@ -229,8 +112,6 @@ if __name__ == "__main__":
     # generator = GensimDenseGenerator()
     # generator = FileBasedDenseGenerator("data/wiki.ru.vec")
     generator = StarspaceDenseGenerator()
-    # generator = StarspaceDenseGeneratorLabelDoc("data/items.csv", "data/item_categories.csv", "data/shops.csv",
-    #                                             "data/processed_full/train.parquet", "data/processed_full/test.parquet")
     # ***
 
     produce_dense_dataset(generator, "data/items.csv", 'item_id', 'item_name', "data/starspace_items_dense.parquet")
