@@ -1,11 +1,11 @@
 import time
 import numpy as np
-
+from enum import Enum
 from modeling.models.model_configs import *
 from modeling.utils import root_mean_squared_error, read_parquet
 
 
-class OneSetValidation:
+class StandardValidation:
     def __init__(self, target_col, model, metric=root_mean_squared_error):
         self.target_col = target_col
         self.model = model
@@ -45,7 +45,7 @@ class OneSetValidation:
 class TimeBasedValidation:
     def __init__(self, target_col, model, time_column_name, metric=root_mean_squared_error):
         self.time_column_name = time_column_name
-        self.one_set_validation = OneSetValidation(target_col, model, metric)
+        self.one_set_validation = StandardValidation(target_col, model, metric)
 
     def run(self, train_set, train_period, test_period, num_splits, inner_train_validation=True):
         time_values = train_set[self.time_column_name].drop_duplicates().sort_values(ascending=False)
@@ -67,6 +67,12 @@ class TimeBasedValidation:
         return {"partial_results": result, "mean": result.mean(), "std": result.std()}
 
 
+class ValidationType(Enum):
+    STANDARD = 1
+    TIME_BASED = 2
+    BOTH = 3  # Might be memory expensive
+
+
 if __name__ == "__main__":
     validation_train_set_path = "data/processed_validation/train.parquet"
     validation_test_set_path = "data/processed_validation/test.parquet"
@@ -74,6 +80,9 @@ if __name__ == "__main__":
 
     valid_train_set = read_parquet(validation_train_set_path)
     valid_test_set = read_parquet(validation_test_set_path)
+
+    # Choose validation type
+    validation_type = ValidationType.STANDARD
 
     print("Read data")
 
@@ -84,21 +93,27 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    one_set_validation = OneSetValidation(
-        target_col,
-        model
-    )
+    if validation_type == ValidationType.STANDARD or validation_type == ValidationType.BOTH:
+        standard_validation = StandardValidation(
+            target_col,
+            model
+        )
 
-    single_eval_result = one_set_validation.run(valid_train_set, valid_test_set)
-    print("Single evaluation result:\t{}".format(single_eval_result))
+        # If both, here we need a copy
+        single_eval_result = standard_validation.run(
+            valid_train_set,
+            valid_test_set,
+            copy=validation_type == ValidationType.BOTH
+        )
+        print("Single evaluation result:\t{}".format(single_eval_result))
+
+    if validation_type == ValidationType.TIME_BASED or validation_type == ValidationType.BOTH:
+        full_train_set = valid_train_set.append(valid_test_set, ignore_index=True)
+        del valid_train_set, valid_test_set
+
+        multi_period_validation = TimeBasedValidation(target_col, model, 'date_block_num')
+        multi_eval_result = multi_period_validation.run(full_train_set, 30, 1, 4, False)
+        print("Multi evaluation result:\n", multi_eval_result)
 
     end = time.time()
-
     print("Time taken: {}s".format(str(end - start)))
-
-    full_train_set = valid_train_set.append(valid_test_set, ignore_index=True)
-    del valid_train_set, valid_test_set
-
-    multi_period_validation = TimeBasedValidation(target_col, model, 'date_block_num')
-    multi_eval_result = multi_period_validation.run(full_train_set, 30, 1, 4, False)
-    print("Multi evaluation result:\n", multi_eval_result)
