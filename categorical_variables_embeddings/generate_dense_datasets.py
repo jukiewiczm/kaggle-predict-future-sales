@@ -1,62 +1,15 @@
 import logging
-import re
+import os
 
 import gensim
 import pandas as pd
 import numpy as np
-from abc import ABC, abstractmethod
 
+from categorical_variables_embeddings.dense_dataset_generator import DenseDatasetGenerator
 
-class SentencesProcessorIterator:
-    def __init__(self, sentences):
-        self.regexp = re.compile('[\W_]+', re.UNICODE)
-        self.sentences = sentences
-
-    def __iter__(self):
-        for sentence in self.sentences:
-            yield self.regexp.sub(' ', sentence.lower()).split()
-
-
-class DenseDatasetGenerator(ABC):
-
-    def transform(self, dataset, id_attr, sentence_attr):
-        # fit_transform would indicate it's always trained on the dataset given which is not always the case
-        """
-        May perform fitting during the transformation.
-        """
-        processed_sentences = self._extract_processed_sentences(dataset, sentence_attr)
-        vectors_container = self._get_vectors_container(processed_sentences)
-        mean_vec = self._get_mean_vector(vectors_container)
-
-        sentence_vectors = []
-        for words in processed_sentences:
-            word_vecs = []
-            for w in words:
-                if w in vectors_container:
-                    word_vecs.append(vectors_container[w])
-
-            if len(word_vecs) > 0:
-                sentence_vectors.append(np.array(word_vecs).mean(axis=0))
-            else:
-                sentence_vectors.append(mean_vec)
-
-        sentence_vectors = pd.DataFrame(np.array(sentence_vectors))
-        sentence_vectors.columns = ["{}_{}".format(id_attr, c) for c in sentence_vectors.columns]
-        sentence_vectors[id_attr] = dataset[id_attr].values
-
-        return sentence_vectors
-
-    @abstractmethod
-    def _get_vectors_container(self, processed_sentences):
-        pass
-
-    @abstractmethod
-    def _get_mean_vector(self, vectors_container):
-        pass
-
-    def _extract_processed_sentences(self, dataset, sentence_attr):
-        raw_sentences = dataset[sentence_attr].tolist()
-        return SentencesProcessorIterator(raw_sentences)
+# In order to use starspace, you need to install it using bin/install_starspace.sh.
+# Unfortunately, it won't be visible in an IDE. If you're not going to use starspace, just comment this import.
+import starwrap as sw
 
 
 class GensimDenseGenerator(DenseDatasetGenerator):
@@ -108,8 +61,42 @@ class FileBasedDenseGenerator(DenseDatasetGenerator):
             logging.info("Done creating dict from file.")
         return self.word_vecs_dict
 
-    def _get_mean_vector(self, vectors_container):
-        return np.array(list(self.word_vecs_dict.values()), dtype='float32').mean(axis=0)
+
+class StarspaceDenseGenerator(DenseDatasetGenerator):
+    def __init__(self, embeds_size=50, epochs=20):
+        self.embeds_size = embeds_size
+        self.epochs = epochs
+
+    def _get_vectors_container(self, processed_sentences):
+        concatenated = [" ".join(s) + f" __label__{i}\n" for i, s in enumerate(processed_sentences)]
+
+        with open("tmp_sentences.txt", "w") as f_out:
+            f_out.writelines(concatenated)
+
+        arg = sw.args()
+        arg.trainFile = "tmp_sentences.txt"
+        arg.trainMode = 0
+        arg.epoch = self.epochs
+        arg.dim = self.embeds_size
+        arg.similarity = "dot"
+        sp = sw.starSpace(arg)
+        sp.init()
+        sp.train()
+        sp.saveModelTsv("tmp_embeds.tsv")
+
+        vectors_container = {}
+        with open("tmp_embeds.tsv", "r") as f_in:
+            for line in f_in:
+                if "__label__" not in line:
+                    split_line = line.split()
+                    key = split_line[0]
+                    embedding = np.array([float(num) for num in split_line[1:]])
+                    vectors_container[key] = embedding
+
+        os.remove("tmp_sentences.txt")
+        os.remove("tmp_embeds.tsv")
+
+        return vectors_container
 
 
 def produce_dense_dataset(generator, input_path, id_attr_name, sentence_attr_name, output_path):
@@ -123,10 +110,11 @@ if __name__ == "__main__":
 
     # *** Choose your generator
     # generator = GensimDenseGenerator()
-    generator = FileBasedDenseGenerator("data/wiki.ru.vec")
+    # generator = FileBasedDenseGenerator("data/wiki.ru.vec")
+    generator = StarspaceDenseGenerator()
     # ***
 
-    produce_dense_dataset(generator, "data/items.csv", 'item_id', 'item_name', "data/gensim_items_dense.parquet")
+    produce_dense_dataset(generator, "data/items.csv", 'item_id', 'item_name', "data/starspace_items_dense.parquet")
     produce_dense_dataset(generator, "data/item_categories.csv", 'item_category_id', 'item_category_name',
-                          "data/gensim_items_categories_dense.parquet")
-    produce_dense_dataset(generator, "data/shops.csv", 'shop_id', 'shop_name', "data/gensim_shops_dense.parquet")
+                          "data/starspace_items_categories_dense.parquet")
+    produce_dense_dataset(generator, "data/shops.csv", 'shop_id', 'shop_name', "data/starspace_shops_dense.parquet")

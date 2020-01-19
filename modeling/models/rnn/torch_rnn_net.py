@@ -8,11 +8,12 @@ from torch.utils.data import DataLoader
 from modeling.models.base_model import Model
 from modeling.models.rnn.dense_sets_holder import DenseSetsHolder
 from modeling.models.rnn.rnn_data_preprocessor import RNNDataPreprocessor
+from modeling.models.rnn.rnn_dataset import RNNDataset
 
 
 class RNNNet(torch.nn.Module, Model):
     def __init__(
-            self, items_path, items_categories_path, shops_path,
+            self, items_path, items_categories_path, shops_path, average_dense_sets,
             input_features_num, num_epochs, batch_size, learning_rate,
             rnn_module, rnn_layers_num, rnn_input_dim, rnn_hidden_output_dim,
             initialize_memory_gate_bias,
@@ -31,8 +32,10 @@ class RNNNet(torch.nn.Module, Model):
         self.items_path = items_path
         self.items_categories_path = items_categories_path
         self.shops_path = shops_path
+        self.average_dense_sets = average_dense_sets
 
         self.data_preprocessor = None
+        self.dense_sets_holder = None
 
         self.device = torch.device(device)
 
@@ -123,30 +126,32 @@ class RNNNet(torch.nn.Module, Model):
         criterion = nn.MSELoss()
 
         print("Preparing datasets..")
-        dense_sets_holder = DenseSetsHolder(
+        self.dense_sets_holder = DenseSetsHolder(
             self.items_path, self.items_categories_path, self.shops_path,
             ("item_id", train['item_id'].drop_duplicates()),
             ("item_category_id", train['item_category_id'].drop_duplicates()),
             ("shop_id", train['shop_id'].drop_duplicates())
         )
 
-        self.data_preprocessor = RNNDataPreprocessor(dense_sets_holder)
-        train_dataset_processed = self.data_preprocessor.preprocess_train_dataset(train, y_train)
+        self.data_preprocessor = RNNDataPreprocessor()
+        preprocessed_train_data = self.data_preprocessor.preprocess_train_dataset(train, y_train)
+        train_dataset = RNNDataset(*preprocessed_train_data, self.dense_sets_holder, self.average_dense_sets)
 
-        train_loader = DataLoader(train_dataset_processed, batch_size=self.batch_size, shuffle=True, num_workers=0,
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0,
                                   collate_fn=self.zip_collate)
 
         valid_set_tuple_postproc = None
 
         if valid_set_tuple is not None:
             test, y_test = valid_set_tuple
-            test_dataset_processed = self.data_preprocessor.preprocess_test_dataset(test)
-            test_loader = self.get_test_loader(test_dataset_processed)
+            preprocessed_test_data = self.data_preprocessor.preprocess_test_dataset(test)
+            test_dataset = RNNDataset(*preprocessed_test_data, self.dense_sets_holder, self.average_dense_sets)
+            test_loader = self.get_test_loader(test_dataset)
             valid_set_tuple_postproc = (test_loader, y_test)
 
         print("Finished preparing datasets, let's train!")
 
-        batches_num = len(train_dataset_processed) / self.batch_size
+        batches_num = len(train_dataset) / self.batch_size
         # ~ 4 reports per epoch
         batch_report_interval = batches_num // 4
 
@@ -209,7 +214,7 @@ class RNNNet(torch.nn.Module, Model):
                         results = self.transform(test_loader, False, False)
 
                         test_loss = torch.sqrt(
-                            F.mse_loss(results.clamp(0, 20), torch.Tensor(y_test.values).squeeze())
+                            F.mse_loss(results.clamp(0, 20), torch.Tensor(y_test.to_numpy()).squeeze())
                         ).item()
 
                         test_losses.append(test_loss)
@@ -240,7 +245,9 @@ class RNNNet(torch.nn.Module, Model):
         if type(test) is DataLoader:
             test_loader = test
         else:
-            test_loader = self.get_test_loader(self.data_preprocessor.preprocess_test_dataset(test))
+            test_data_preprocessed = self.data_preprocessor.preprocess_test_dataset(test)
+            test_dataset = RNNDataset(*test_data_preprocessed, self.dense_sets_holder, self.average_dense_sets)
+            test_loader = self.get_test_loader(test_dataset)
 
         self.eval()
         results = []

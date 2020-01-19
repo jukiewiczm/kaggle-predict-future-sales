@@ -24,7 +24,7 @@ def prepare_aggregate_submission(dir_path, out_path, func=lambda x: x.mean(axis=
     (takes an average of them by default).
     """
     files = [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.endswith(".csv.gz")]
-    id_col = pd.read_csv(files[0])['ID'].values
-    predictions = func(np.array([pd.read_csv(f)['item_cnt_month'].values for f in files]))
+    id_col = pd.read_csv(files[0])['ID'].to_numpy()
+    predictions = func(np.array([pd.read_csv(f)['item_cnt_month'].to_numpy() for f in files]))
     result = pd.DataFrame({'ID': id_col, 'item_cnt_month': predictions})
     result.to_csv(out_path, index=False, header=True, compression="gzip")

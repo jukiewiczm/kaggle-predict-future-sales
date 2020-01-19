@@ -291,7 +291,7 @@ data[['count']].describe(percentiles=np.arange(0.1, 1, 0.1)).transpose()
 # In[30]:
 
 
-item_category = data.nlargest(1, 'count')['item_category_id'].values[0]
+item_category = data.nlargest(1, 'count')['item_category_id'].to_numpy()[0]
 item_categories[item_categories['item_category_id'] == int(item_category)]
 
 
@@ -329,7 +329,7 @@ data[['item_price']].describe(percentiles=np.arange(0.1, 1, 0.1)).transpose()
 # In[33]:
 
 
-item_id = train_postproc[train_postproc['item_price'] == int(data['item_price'].nlargest(1).values[0])]['item_id'].values[0]
+item_id = train_postproc[train_postproc['item_price'] == int(data['item_price'].nlargest(1).to_numpy()[0])]['item_id'].to_numpy()[0]
 items[items['item_id'] == item_id]
 train_postproc[train_postproc['item_id'] == item_id]
 
@@ -373,7 +373,7 @@ data[['count']].describe(percentiles=np.arange(0.1, 1, 0.1)).transpose()
 # In[37]:
 
 
-item_id = int(data.nlargest(1, 'count')['item_id'].values[0])
+item_id = int(data.nlargest(1, 'count')['item_id'].to_numpy()[0])
 items[items['item_id'] == item_id]
 
 

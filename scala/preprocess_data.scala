@@ -198,8 +198,8 @@ def processDatasets(
 }
 
 val rootPath = "kaggle-predict-future-sales"
-val trainPath = s"$rootPath/data/sales_train.csv.gz"
-val testPath = s"$rootPath/data/test.csv.gz"
+val trainPath = s"$rootPath/data/sales_train.csv"
+val testPath = s"$rootPath/data/test.csv"
 val itemsPath = s"$rootPath/data/items.csv"
 val itemsCategoriesPath = s"$rootPath/data/item_categories.csv"
 val shopsPath = s"$rootPath/data/shops.csv"
