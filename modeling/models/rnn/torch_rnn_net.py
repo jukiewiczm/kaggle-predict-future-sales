@@ -117,7 +117,9 @@ class RNNNet(torch.nn.Module, Model):
         # Post RNN FC layers
         input_final = self.post_rnn_layers(F.relu(input_post_rnn))[indices_back]
 
-        return input_final
+        # Return with proper shape. It is needed to always keep the same shape, which is not the case when the batch
+        # happens to be filled with sequences of unit length.
+        return input_final.reshape(lens.shape[0], -1)
 
     def fit(self, train, y_train, valid_set_tuple=None):
         # Print all parameters so you're sure you got what you wanted.
@@ -180,7 +182,7 @@ class RNNNet(torch.nn.Module, Model):
                 optimizer.zero_grad()
 
                 # Forward + backward + optimize
-                outputs = self.forward(inputs, lens).squeeze()
+                outputs = self.forward(inputs, lens)
 
                 # Learning on all time steps outputs - need a mask to extract the relevant ones
                 labels = pad_sequence(labels, batch_first=True, padding_value=-999).to(self.device)
@@ -255,7 +257,7 @@ class RNNNet(torch.nn.Module, Model):
             for inputs_part, lens_part, _ in test_loader:
                 results_chunk = self.forward(inputs_part, lens_part)
                 # Getting last output from test prediction
-                results.extend([x.squeeze(dim=1)[l - 1] for x, l in zip(results_chunk, lens_part)])
+                results.extend([x[l - 1] for x, l in zip(results_chunk, lens_part)])
 
             results_final = torch.Tensor(results).detach()
 

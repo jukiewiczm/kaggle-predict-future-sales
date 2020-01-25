@@ -13,9 +13,13 @@ import starwrap as sw
 
 
 class GensimDenseGenerator(DenseDatasetGenerator):
+    def __init__(self, embeds_size=50, epochs=20):
+        self.embeds_size = embeds_size
+        self.epochs = epochs
 
     def _get_vectors_container(self, processed_sentences):
-        model = gensim.models.Word2Vec(processed_sentences, min_count=1, size=100, iter=20, batch_words=100)
+        model = gensim.models.Word2Vec(processed_sentences,
+                                       min_count=1, size=self.embeds_size, iter=self.epochs, batch_words=100)
         return model.wv
 
     def _get_mean_vector(self, vectors_container):

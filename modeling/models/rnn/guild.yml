@@ -1,0 +1,83 @@
+- model: rnn_net
+  description: PyTorch RNN net hyperparameter tuning
+  operations:
+    evaluate:
+      description: "Evaluate the actual model"
+      main: rnn_tuning_guild
+      flags:
+        project_root_path:
+          description: "Set this as an absolute path to your project folder to make it work properly"
+          default: "absolute path to the project root"
+        embedding_type:
+          description: "Type of embedding to use"
+          choices: ["starspace", "wiki", "gensim"]
+          default: "starspace"
+        embedding_size:
+          description: "Size of the embeddings"
+          default: 50
+        average_dense_sets:
+          description: "Whether to average dense sets or concatenate them"
+          choices: [0, 1]
+          default: 1
+        num_epochs:
+          description: "Number of epochs"
+          default: 1
+        batch_size:
+          description: "Size of a batch"
+          default: 256
+        learning_rate:
+          description: "Learning rate"
+          default: 1e-5
+        pre_rnn_layers_num:
+          description: "Number of fully connected layers before RNN input"
+          default: 2
+        pre_rnn_dim:
+          description: "Size of pre RNN FC layers"
+          default: 376
+        rnn_module:
+          description: "RNN module to be used"
+          choices: ["rnn", "lstm", "gru"]
+          default: "gru"
+        rnn_layers_num:
+          description: "Number of inner RNN layers"
+          default: 1
+        rnn_input_dim:
+          description: "Size of rnn input"
+          default: 188
+        rnn_hidden_output_dim:
+          description: "Size of RNN hidden/output layers"
+          default: 188
+        rnn_initialize_memory_gate_bias:
+          description: "Whether to use the trick to make RNN remember more at the beggining"
+          choices: [0, 1]
+          default: 1
+        post_rnn_layers_num:
+          description: "Number of fully connected layers after RNN output"
+          default: 2
+        post_rnn_dim:
+          description: "Size of post RNN FC layers"
+          default: 188
+        pre_output_dim:
+          description: "Size of the last layer before the output"
+          default: 94
+    tune_experiment:
+      steps:
+        - run: evaluate
+            embedding_type=["starspace","gensim","wiki"]
+            embedding_size=[1:100]
+            average_dense_sets=[0,1]
+            num_epochs=[1:10]
+            batch_size=loguniform[4:4096]
+            learning_rate=loguniform[1e-6:1e-3]
+            pre_rnn_layers_num=[1:5]
+            pre_rnn_dim=[20:500]
+            rnn_module=["gru","lstm","rnn"]
+            rnn_layers_num=[1:5]
+            rnn_input_dim=[20:500]
+            rnn_hidden_output_dim=[20:500]
+            rnn_initialize_memory_gate_bias=[0,1]
+            post_rnn_layers_num=[1:5]
+            post_rnn_dim=[20:500]
+            pre_output_dim=[20:500]
+            --max-trials 30
+            --optimizer gp
