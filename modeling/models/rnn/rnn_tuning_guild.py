@@ -1,23 +1,31 @@
-# Special block for proper project imports
-import sys
-project_root_path = "kaggle-predict-future-sales"
-sys.path.append(project_root_path)
-#
-
-import torch  # noqa: E402
-import torch.nn  # noqa: E402
+import torch
+import torch.nn
 
 from categorical_variables_embeddings.generate_dense_datasets import StarspaceDenseGenerator, GensimDenseGenerator, \
-    FileBasedDenseGenerator, produce_dense_dataset  # noqa: E402
-from modeling.model_validation import StandardValidation  # noqa: E402
-from modeling.models.rnn.torch_rnn_net import RNNNet  # noqa: E402
-from modeling.utils import read_parquet  # noqa: E402
+    FileBasedDenseGenerator, produce_dense_dataset
+from modeling.model_validation import StandardValidation
+from modeling.models.rnn.torch_rnn_net import RNNNet
+from modeling.utils import read_parquet
 
-validation_train_set_path = f"{project_root_path}/data/processed_validation/train.parquet"
+project_root_path = "kaggle-predict-future-sales"
 target_col = "item_cnt_month"
 
-valid_train_set = read_parquet(validation_train_set_path).query("date_block_num < 22")
-valid_test_set = read_parquet(validation_train_set_path).query("date_block_num == 22")
+prepare_submission = 0  # Change to 1 if you want to re-run guild job with tuned parameters.
+test_reference = None
+submission_path = "submissions/submission.csv.gz"
+submission_path_absolute = f"{project_root_path}/{submission_path}"
+
+if prepare_submission:
+    train_set = read_parquet(f"{project_root_path}/data/processed_full/train.parquet")
+    test_set = read_parquet(f"{project_root_path}/data/processed_full/test.parquet")
+    test_reference = test_set[['ID']].astype("int32")
+    test_set.drop([target_col, 'ID'], axis=1, inplace=True, errors='ignore')
+    test_set = test_set[train_set.columns.drop(target_col)]
+else:
+    train_set_path = f"{project_root_path}/data/processed_validation/train.parquet"
+    # It seems that taking it year back is a pretty good validation scheme.
+    train_set = read_parquet(train_set_path).query("date_block_num < 22")
+    test_set = read_parquet(train_set_path).query("date_block_num == 22")
 
 # Actual tuning parameters
 embedding_type = "starspace"
@@ -44,7 +52,7 @@ post_rnn_layers_num = 2
 post_rnn_dim = 188
 pre_output_dim = 94
 
-# Some preparations
+# Preparations
 ## Embeddings
 embeds_generator = {
     "starspace": StarspaceDenseGenerator(embedding_size_final),
@@ -78,18 +86,23 @@ model = RNNNet(
     f"{project_root_path}/data/guild_item_embeddings.parquet",
     f"{project_root_path}/data/guild_item_category_embeddings.parquet",
     f"{project_root_path}/data/guild_shop_embeddings.parquet",
-    bool(average_dense_sets_final),
+    average_dense_sets_final,
     input_features_num,
     num_epochs, int(batch_size), learning_rate,
-    rnn_module_class, rnn_layers_num, rnn_input_dim, rnn_hidden_output_dim, bool(rnn_initialize_memory_gate_bias),
+    rnn_module_class, rnn_layers_num, rnn_input_dim, rnn_hidden_output_dim, rnn_initialize_memory_gate_bias,
     pre_rnn_layers_num, pre_rnn_dim, post_rnn_layers_num, post_rnn_dim, pre_output_dim,
     save_temporary_models=False, plot_training_history=False
 )
 
-# Validate, save model (just in case), print output
-validation = StandardValidation(target_col, model)
-validation_result = validation.run(valid_train_set, valid_test_set, inner_train_validation=False, copy=False)
+if prepare_submission:
+    predictions = model.transform(test_set).clip(0, 20)
+    test_reference['item_cnt_month'] = predictions
+    test_reference.sort_values('ID').to_csv(submission_path_absolute, index=False, header=True, compression='gzip')
+else:
+    # Validate, save model (just in case), print output
+    validation = StandardValidation(target_col, model)
+    validation_result = validation.run(train_set, test_set, inner_train_validation=False, copy=False)
 
-torch.save(validation.model.state_dict(), f"{project_root_path}/model_{validation_result}.pt")
+    torch.save(validation.model.state_dict(), f"{project_root_path}/model_{validation_result}.pt")
 
-print(f"loss: {validation_result}")
+    print(f"loss: {validation_result}")
