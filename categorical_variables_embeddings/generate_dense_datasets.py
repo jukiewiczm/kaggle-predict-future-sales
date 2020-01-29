@@ -5,29 +5,60 @@ import gensim
 import pandas as pd
 import numpy as np
 
-from categorical_variables_embeddings.dense_dataset_generator import DenseDatasetGenerator
+from categorical_variables_embeddings.dense_dataset_generator import DenseDatasetGenerator, \
+    DenseDatasetGeneratorParametrized
 
 # In order to use starspace, you need to install it using bin/install_starspace.sh.
 # Unfortunately, it won't be visible in an IDE. If you're not going to use starspace, just comment this import.
 import starwrap as sw
 
 
-class GensimDenseGenerator(DenseDatasetGenerator):
-    def __init__(self, embeds_size=50, epochs=20):
-        self.embeds_size = embeds_size
-        self.epochs = epochs
-
+class GensimDenseGenerator(DenseDatasetGeneratorParametrized):
     def _get_vectors_container(self, processed_sentences):
         model = gensim.models.Word2Vec(processed_sentences,
-                                       min_count=1, size=self.embeds_size, iter=self.epochs, batch_words=100)
+                                       min_count=1, size=self.embedding_size,
+                                       iter=self.num_epochs, alpha=self.learning_rate)
         return model.wv
 
     def _get_mean_vector(self, vectors_container):
         return vectors_container.vectors.mean(axis=0)
 
 
-class FileBasedDenseGenerator(DenseDatasetGenerator):
+class StarspaceDenseGenerator(DenseDatasetGeneratorParametrized):
+    def _get_vectors_container(self, processed_sentences):
+        concatenated = [" ".join(s) + f" __label__{i}\n" for i, s in enumerate(processed_sentences)]
 
+        with open("tmp_sentences.txt", "w") as f_out:
+            f_out.writelines(concatenated)
+
+        arg = sw.args()
+        arg.trainFile = "tmp_sentences.txt"
+        arg.trainMode = 0
+        arg.lr = self.learning_rate
+        arg.epoch = self.num_epochs
+        arg.dim = self.embedding_size
+        arg.similarity = "dot"
+        sp = sw.starSpace(arg)
+        sp.init()
+        sp.train()
+        sp.saveModelTsv("tmp_embeds.tsv")
+
+        vectors_container = {}
+        with open("tmp_embeds.tsv", "r") as f_in:
+            for line in f_in:
+                if "__label__" not in line:
+                    split_line = line.split()
+                    key = split_line[0]
+                    embedding = np.array([float(num) for num in split_line[1:]])
+                    vectors_container[key] = embedding
+
+        os.remove("tmp_sentences.txt")
+        os.remove("tmp_embeds.tsv")
+
+        return vectors_container
+
+
+class FileBasedDenseGenerator(DenseDatasetGenerator):
     def __init__(self, file_path):
         self.fitted = False
         self._file_path = file_path
@@ -64,43 +95,6 @@ class FileBasedDenseGenerator(DenseDatasetGenerator):
             self.word_vecs_dict = word_vecs_dict
             logging.info("Done creating dict from file.")
         return self.word_vecs_dict
-
-
-class StarspaceDenseGenerator(DenseDatasetGenerator):
-    def __init__(self, embeds_size=50, epochs=20):
-        self.embeds_size = embeds_size
-        self.epochs = epochs
-
-    def _get_vectors_container(self, processed_sentences):
-        concatenated = [" ".join(s) + f" __label__{i}\n" for i, s in enumerate(processed_sentences)]
-
-        with open("tmp_sentences.txt", "w") as f_out:
-            f_out.writelines(concatenated)
-
-        arg = sw.args()
-        arg.trainFile = "tmp_sentences.txt"
-        arg.trainMode = 0
-        arg.epoch = self.epochs
-        arg.dim = self.embeds_size
-        arg.similarity = "dot"
-        sp = sw.starSpace(arg)
-        sp.init()
-        sp.train()
-        sp.saveModelTsv("tmp_embeds.tsv")
-
-        vectors_container = {}
-        with open("tmp_embeds.tsv", "r") as f_in:
-            for line in f_in:
-                if "__label__" not in line:
-                    split_line = line.split()
-                    key = split_line[0]
-                    embedding = np.array([float(num) for num in split_line[1:]])
-                    vectors_container[key] = embedding
-
-        os.remove("tmp_sentences.txt")
-        os.remove("tmp_embeds.tsv")
-
-        return vectors_container
 
 
 def produce_dense_dataset(generator, input_path, id_attr_name, sentence_attr_name, output_path):
