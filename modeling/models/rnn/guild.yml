@@ -4,20 +4,22 @@
     evaluate_rnn:
       description: "Evaluate model trained with given parameters."
       sourcecode:
-        - modeling
-        - categorical_variables_embeddings
-      main: modeling/models.rnn.rnn_tuning_guild
+        root: ../../..
+        select:
+          - modeling
+          - categorical_variables_embeddings
+      main: modeling.models.rnn.rnn_tuning_guild
+      requires:
+        - file: ../../../data
+        - file: ../../../submissions
       flags:
-        project_root_path:
-          description: "Project root path for proper dataset referencing"
-          default: "/media/stoik/F49C320C9C31CA3E/Projekty/kaggle-predict-future-sales"
         prepare_submission:
           description: "Set to 1 if you want to train and predict on the test set instead of tuning"
           choices: [0, 1]
           default: 0
-        submission_path:
-          description: "If preparing submission, it's a project root relative path to where it should be saved"
-          default: "submissions/submission.csv.gz"
+        submission_name:
+          description: "Filename for the submission, if preparing one"
+          default: "submission.csv.gz"
         embedding_type:
           description: "Type of embedding to use"
           choices: ["starspace", "wiki", "gensim"]
@@ -25,6 +27,12 @@
         embedding_size:
           description: "Size of the embeddings"
           default: 50
+        embedding_epochs:
+          description: "Number of epochs for embeddings training"
+          default: 20
+        embedding_lr:
+          description: "Learning rate for embeddings training"
+          default: 0.02
         average_dense_sets:
           description: "Whether to average dense sets or concatenate them"
           choices: [0, 1]
@@ -76,19 +84,21 @@
         - run: evaluate_rnn
             embedding_type=["starspace","gensim","wiki"]
             embedding_size=[1:100]
+            embedding_epochs=[5:50]
+            embedding_lr=loguniform[1e-3:1.0]
             average_dense_sets=[0,1]
-            num_epochs=[1:10]
-            batch_size=loguniform[4:2048]
+            num_epochs=[1:15]
+            batch_size=loguniform[4:4096]
             learning_rate=loguniform[1e-6:1e-3]
             pre_rnn_layers_num=[1:5]
-            pre_rnn_dim=[20:400]
+            pre_rnn_dim=[20:500]
             rnn_module=["gru","lstm","rnn"]
             rnn_layers_num=[1:5]
-            rnn_input_dim=[20:400]
-            rnn_hidden_output_dim=[20:400]
+            rnn_input_dim=[20:500]
+            rnn_hidden_output_dim=[20:500]
             rnn_initialize_memory_gate_bias=[0,1]
             post_rnn_layers_num=[1:5]
-            post_rnn_dim=[20:400]
-            pre_output_dim=[20:400]
+            post_rnn_dim=[20:500]
+            pre_output_dim=[20:500]
             --max-trials 150
             --optimizer gp
