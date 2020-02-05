@@ -16,7 +16,7 @@ import starwrap as sw
 class GensimDenseGenerator(DenseDatasetGeneratorParametrized):
     def _get_vectors_container(self, processed_sentences):
         model = gensim.models.Word2Vec(processed_sentences,
-                                       min_count=1, size=self.embedding_size,
+                                       min_count=1, size=self.embedding_size, batch_words=100,
                                        iter=self.num_epochs, alpha=self.learning_rate)
         return model.wv
 
