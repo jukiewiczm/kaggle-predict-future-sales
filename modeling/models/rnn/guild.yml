@@ -100,5 +100,6 @@
             post_rnn_layers_num=[1:5]
             post_rnn_dim=[20:500]
             pre_output_dim=[20:500]
+            prepare_submission=0
             --max-trials 150
             --optimizer gp
