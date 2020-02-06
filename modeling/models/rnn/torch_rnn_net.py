@@ -37,7 +37,7 @@ class RNNNet(torch.nn.Module, Model):
         self.data_preprocessor = None
         self.dense_sets_holder = None
 
-        self.device = torch.device(device)
+        self.target_device = torch.device(device)
 
         self.rnn_layers_num = rnn_layers_num
         self.rnn_hidden_output_dim = rnn_hidden_output_dim
@@ -45,7 +45,7 @@ class RNNNet(torch.nn.Module, Model):
 
         # RNN training trick, reference https://danijar.com/tips-for-training-recurrent-neural-networks/
         self.hidden_learned = nn.Embedding(self.rnn_layers_num, self.rnn_hidden_output_dim)
-        self.hidden_idx = torch.LongTensor(list(range(self.rnn_layers_num))).to(self.device)
+        self.hidden_idx = torch.LongTensor(list(range(self.rnn_layers_num))).to(self.target_device, non_blocking=True)
 
         if self.is_lstm:
             self.cell_learned = nn.Embedding(self.rnn_layers_num, self.rnn_hidden_output_dim)
@@ -92,12 +92,8 @@ class RNNNet(torch.nn.Module, Model):
         self.post_rnn_layers = nn.Sequential(*post_rnn_modules)
 
     def forward(self, inputs, lens):
-        lens = torch.Tensor(lens)
         indices = torch.argsort(-lens)
         indices_back = torch.argsort(indices)
-
-        # Pad the sequences to equal length
-        inputs = pad_sequence(inputs, batch_first=True, padding_value=0).to(self.device)
 
         # Removing first three indexing columns from the input
         inputs_sliced = inputs[:, :, 3:]
@@ -139,8 +135,8 @@ class RNNNet(torch.nn.Module, Model):
         preprocessed_train_data = self.data_preprocessor.preprocess_train_dataset(train, y_train)
         train_dataset = RNNDataset(*preprocessed_train_data, self.dense_sets_holder, self.average_dense_sets)
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0,
-                                  collate_fn=self.zip_collate)
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4,
+                                  collate_fn=self.zip_collate, pin_memory=True)
 
         valid_set_tuple_postproc = None
 
@@ -161,7 +157,7 @@ class RNNNet(torch.nn.Module, Model):
 
         self.zero_grad()
         self.train()
-        self.to(self.device)
+        self.to(self.target_device, non_blocking=True)
 
         optimizer = torch.optim.Adam(self.parameters(), self.learning_rate)
 
@@ -177,6 +173,9 @@ class RNNNet(torch.nn.Module, Model):
             for i, data in enumerate(train_loader, 0):
                 # Get the inputs
                 inputs, lens, labels = data
+                labels = labels.to(self.target_device, non_blocking=True)
+                inputs = inputs.to(self.target_device, non_blocking=True)
+                lens = lens.to(self.target_device, non_blocking=True)
 
                 # Zero the parameter gradients
                 optimizer.zero_grad()
@@ -185,7 +184,6 @@ class RNNNet(torch.nn.Module, Model):
                 outputs = self.forward(inputs, lens)
 
                 # Learning on all time steps outputs - need a mask to extract the relevant ones
-                labels = pad_sequence(labels, batch_first=True, padding_value=-999).to(self.device)
                 labels_mask = (labels >= 0)
 
                 outputs_extracted = outputs[labels_mask]
@@ -287,9 +285,14 @@ class RNNNet(torch.nn.Module, Model):
         """
         Custom collate function for torch data loader.
         """
-        return zip(*batch)
+        inputs, lens, labels = zip(*batch)
+        # Pad the sequences and labels to equal length
+        labels = pad_sequence(labels, batch_first=True, padding_value=-999)
+        inputs = pad_sequence(inputs, batch_first=True, padding_value=0)
+        lens = torch.Tensor(lens)
+        return inputs, lens, labels
 
     def get_test_loader(self, rnn_dataset):
         return DataLoader(
-                rnn_dataset, batch_size=3200, shuffle=False, num_workers=0, collate_fn=self.zip_collate
+                rnn_dataset, batch_size=3200, shuffle=False, num_workers=4, collate_fn=self.zip_collate, pin_memory=True
             )
