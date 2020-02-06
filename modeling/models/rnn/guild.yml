@@ -88,7 +88,7 @@
             embedding_lr=loguniform[1e-3:1.0]
             average_dense_sets=[0,1]
             num_epochs=[1:15]
-            batch_size=loguniform[4:4096]
+            batch_size=loguniform[32:4096]
             learning_rate=loguniform[1e-6:1e-3]
             pre_rnn_layers_num=[1:5]
             pre_rnn_dim=[20:500]
