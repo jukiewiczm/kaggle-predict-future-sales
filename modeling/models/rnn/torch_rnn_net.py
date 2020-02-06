@@ -253,7 +253,10 @@ class RNNNet(torch.nn.Module, Model):
         results = []
         with torch.no_grad():
             for inputs_part, lens_part, _ in test_loader:
-                results_chunk = self.forward(inputs_part, lens_part)
+                results_chunk = self.forward(
+                    inputs_part.to(self.target_device, non_blocking=True),
+                    lens_part.to(self.target_device, non_blocking=True)
+                )
                 # Getting last output from test prediction
                 results.extend([x[l - 1] for x, l in zip(results_chunk, lens_part)])
 
