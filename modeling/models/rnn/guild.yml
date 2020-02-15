@@ -1,7 +1,7 @@
 - model: rnn_net
   description: PyTorch RNN net hyperparameter tuning
   operations:
-    evaluate_rnn:
+    train_rnn:
       description: "Evaluate model trained with given parameters."
       sourcecode:
         root: ../../..
@@ -13,10 +13,10 @@
         - file: ../../../data
         - file: ../../../submissions
       flags:
-        prepare_submission:
-          description: "Set to 1 if you want to train and predict on the test set instead of tuning"
-          choices: [0, 1]
-          default: 0
+        run_type:
+          description: "Choose whether you want to evaluate, or predict by training from scratch/using already trained model."
+          choices: ["evaluate", "train_predict", "load_predict"]
+          default: "evaluate"
         submission_name:
           description: "Filename for the submission, if preparing one"
           default: "submission.csv.gz"
@@ -87,8 +87,8 @@
             embedding_epochs=[5:50]
             embedding_lr=loguniform[1e-3:1.0]
             average_dense_sets=[0,1]
-            num_epochs=[1:15]
-            batch_size=loguniform[32:4096]
+            num_epochs=10
+            batch_size=512
             learning_rate=loguniform[1e-6:1e-3]
             pre_rnn_layers_num=[1:5]
             pre_rnn_dim=[20:500]
