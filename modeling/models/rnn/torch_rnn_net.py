@@ -19,9 +19,14 @@ class RNNNet(torch.nn.Module, Model):
             initialize_memory_gate_bias,
             pre_rnn_layers_num, pre_rnn_dim,
             post_rnn_layers_num, post_rnn_dim, pre_output_dim,
-            save_temporary_models, plot_training_history, device='cuda'
+            save_temporary_models, plot_training_history,
+            device='cuda', seed=234534
     ):
         super(RNNNet, self).__init__()
+        torch.manual_seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
