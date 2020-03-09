@@ -140,7 +140,7 @@ class RNNNet(torch.nn.Module, Model):
         preprocessed_train_data = self.data_preprocessor.preprocess_train_dataset(train, y_train)
         train_dataset = RNNDataset(*preprocessed_train_data, self.dense_sets_holder, self.average_dense_sets)
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=3,
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=2,
                                   collate_fn=self.zip_collate, pin_memory=True)
 
         valid_set_tuple_postproc = None
@@ -306,5 +306,5 @@ class RNNNet(torch.nn.Module, Model):
 
     def get_test_loader(self, rnn_dataset):
         return DataLoader(
-                rnn_dataset, batch_size=3200, shuffle=False, num_workers=3, collate_fn=self.zip_collate, pin_memory=True
+                rnn_dataset, batch_size=3200, shuffle=False, num_workers=2, collate_fn=self.zip_collate, pin_memory=True
             )

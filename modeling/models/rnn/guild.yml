@@ -103,3 +103,28 @@
             prepare_submission="eval"
             --max-trials 150
             --optimizer gp
+    tune_rnn_2:
+      sourcecode: no
+      steps:
+        - run: train_rnn
+            embedding_type="wiki"
+            embedding_size=300
+            embedding_epochs=1
+            embedding_lr=1
+            average_dense_sets=1
+            num_epochs=1
+            batch_size=[750:1000]
+            learning_rate=[0.0003:0.0004]
+            pre_rnn_layers_num=1
+            pre_rnn_dim=[400:1200]
+            rnn_module="gru"
+            rnn_layers_num=1
+            rnn_input_dim=[250:800]
+            rnn_hidden_output_dim=[500:1500]
+            rnn_initialize_memory_gate_bias=1
+            post_rnn_layers_num=1
+            post_rnn_dim=[1:100]
+            pre_output_dim=[1:20]
+            prepare_submission="eval"
+            --max-trials 150
+            --optimizer gp

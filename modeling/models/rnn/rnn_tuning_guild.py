@@ -21,9 +21,9 @@ if run_type != "evaluate":
     test_set.drop([target_col, 'ID'], axis=1, inplace=True, errors='ignore')
 else:
     train_set_path = "data/processed_validation/train.parquet"
-    # It seems that taking it year back is a pretty good validation scheme.
-    train_set = read_parquet(train_set_path).query("date_block_num < 22")
-    test_set = read_parquet(train_set_path).query("date_block_num == 22")
+    test_set_path = "data/processed_validation/test.parquet"
+    train_set = read_parquet(train_set_path)
+    test_set = read_parquet(test_set_path)
 
 # Actual tuning parameters
 embedding_type = "starspace"
