@@ -306,5 +306,5 @@ class RNNNet(torch.nn.Module, Model):
 
     def get_test_loader(self, rnn_dataset):
         return DataLoader(
-                rnn_dataset, batch_size=3200, shuffle=False, num_workers=2, collate_fn=self.zip_collate, pin_memory=True
+                rnn_dataset, batch_size=1024, shuffle=False, num_workers=2, collate_fn=self.zip_collate, pin_memory=True
             )
