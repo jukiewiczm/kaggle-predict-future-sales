@@ -1,3 +1,5 @@
+# Predict Future Sales
+
 My attempt to solve Kaggle's Predict Future Sales competition.
 
 Contains:
@@ -11,6 +13,11 @@ Contains:
 # Report
 
 For the solution report, check [here](report/solution_report.md).
+
+# Automatic hyperparameter tuning
+For RNN-based model, automatic hyperparemeter tuning is available with [Guild AI](https://github.com/guildai/guildai) AutoML tool.
+
+Check [this document](modeling/models/rnn/README.md) for details.
 
 # External resources
 
