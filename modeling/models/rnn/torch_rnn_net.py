@@ -19,9 +19,14 @@ class RNNNet(torch.nn.Module, Model):
             initialize_memory_gate_bias,
             pre_rnn_layers_num, pre_rnn_dim,
             post_rnn_layers_num, post_rnn_dim, pre_output_dim,
-            save_temporary_models, plot_training_history, device='cuda'
+            save_temporary_models, plot_training_history,
+            device='cuda', seed=234534
     ):
         super(RNNNet, self).__init__()
+        torch.manual_seed(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -37,7 +42,7 @@ class RNNNet(torch.nn.Module, Model):
         self.data_preprocessor = None
         self.dense_sets_holder = None
 
-        self.device = torch.device(device)
+        self.target_device = torch.device(device)
 
         self.rnn_layers_num = rnn_layers_num
         self.rnn_hidden_output_dim = rnn_hidden_output_dim
@@ -45,7 +50,7 @@ class RNNNet(torch.nn.Module, Model):
 
         # RNN training trick, reference https://danijar.com/tips-for-training-recurrent-neural-networks/
         self.hidden_learned = nn.Embedding(self.rnn_layers_num, self.rnn_hidden_output_dim)
-        self.hidden_idx = torch.LongTensor(list(range(self.rnn_layers_num))).to(self.device)
+        self.hidden_idx = torch.LongTensor(list(range(self.rnn_layers_num))).to(self.target_device, non_blocking=True)
 
         if self.is_lstm:
             self.cell_learned = nn.Embedding(self.rnn_layers_num, self.rnn_hidden_output_dim)
@@ -92,12 +97,8 @@ class RNNNet(torch.nn.Module, Model):
         self.post_rnn_layers = nn.Sequential(*post_rnn_modules)
 
     def forward(self, inputs, lens):
-        lens = torch.Tensor(lens)
         indices = torch.argsort(-lens)
         indices_back = torch.argsort(indices)
-
-        # Pad the sequences to equal length
-        inputs = pad_sequence(inputs, batch_first=True, padding_value=0).to(self.device)
 
         # Removing first three indexing columns from the input
         inputs_sliced = inputs[:, :, 3:]
@@ -117,7 +118,9 @@ class RNNNet(torch.nn.Module, Model):
         # Post RNN FC layers
         input_final = self.post_rnn_layers(F.relu(input_post_rnn))[indices_back]
 
-        return input_final
+        # Return with proper shape. It is needed to always keep the same shape, which is not the case when the batch
+        # happens to be filled with sequences of unit length.
+        return input_final.reshape(lens.shape[0], -1)
 
     def fit(self, train, y_train, valid_set_tuple=None):
         # Print all parameters so you're sure you got what you wanted.
@@ -137,8 +140,8 @@ class RNNNet(torch.nn.Module, Model):
         preprocessed_train_data = self.data_preprocessor.preprocess_train_dataset(train, y_train)
         train_dataset = RNNDataset(*preprocessed_train_data, self.dense_sets_holder, self.average_dense_sets)
 
-        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0,
-                                  collate_fn=self.zip_collate)
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=2,
+                                  collate_fn=self.zip_collate, pin_memory=True)
 
         valid_set_tuple_postproc = None
 
@@ -159,7 +162,7 @@ class RNNNet(torch.nn.Module, Model):
 
         self.zero_grad()
         self.train()
-        self.to(self.device)
+        self.to(self.target_device, non_blocking=True)
 
         optimizer = torch.optim.Adam(self.parameters(), self.learning_rate)
 
@@ -175,15 +178,17 @@ class RNNNet(torch.nn.Module, Model):
             for i, data in enumerate(train_loader, 0):
                 # Get the inputs
                 inputs, lens, labels = data
+                labels = labels.to(self.target_device, non_blocking=True)
+                inputs = inputs.to(self.target_device, non_blocking=True)
+                lens = lens.to(self.target_device, non_blocking=True)
 
                 # Zero the parameter gradients
                 optimizer.zero_grad()
 
                 # Forward + backward + optimize
-                outputs = self.forward(inputs, lens).squeeze()
+                outputs = self.forward(inputs, lens)
 
                 # Learning on all time steps outputs - need a mask to extract the relevant ones
-                labels = pad_sequence(labels, batch_first=True, padding_value=-999).to(self.device)
                 labels_mask = (labels >= 0)
 
                 outputs_extracted = outputs[labels_mask]
@@ -253,9 +258,12 @@ class RNNNet(torch.nn.Module, Model):
         results = []
         with torch.no_grad():
             for inputs_part, lens_part, _ in test_loader:
-                results_chunk = self.forward(inputs_part, lens_part)
+                results_chunk = self.forward(
+                    inputs_part.to(self.target_device, non_blocking=True),
+                    lens_part.to(self.target_device, non_blocking=True)
+                )
                 # Getting last output from test prediction
-                results.extend([x.squeeze(dim=1)[l - 1] for x, l in zip(results_chunk, lens_part)])
+                results.extend([x[l - 1] for x, l in zip(results_chunk, lens_part)])
 
             results_final = torch.Tensor(results).detach()
 
@@ -285,9 +293,18 @@ class RNNNet(torch.nn.Module, Model):
         """
         Custom collate function for torch data loader.
         """
-        return zip(*batch)
+        inputs, lens, labels = zip(*batch)
+        # Pad the sequences and labels to equal length.
+        # If processing test set, all labels will be None, in that case no processing is done.
+        if labels[0] is not None:
+            labels = pad_sequence(labels, batch_first=True, padding_value=-999)
+        else:
+            labels = None
+        inputs = pad_sequence(inputs, batch_first=True, padding_value=0)
+        lens = torch.LongTensor(lens)
+        return inputs, lens, labels
 
     def get_test_loader(self, rnn_dataset):
         return DataLoader(
-                rnn_dataset, batch_size=3200, shuffle=False, num_workers=0, collate_fn=self.zip_collate
+                rnn_dataset, batch_size=1024, shuffle=False, num_workers=2, collate_fn=self.zip_collate, pin_memory=True
             )

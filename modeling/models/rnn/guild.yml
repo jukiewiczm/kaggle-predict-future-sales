@@ -1,0 +1,155 @@
+- model: rnn_net
+  description: PyTorch RNN net hyperparameter tuning
+  operations:
+    train_rnn:
+      description: "Evaluate model trained with given parameters."
+      sourcecode:
+        root: ../../..
+        select:
+          - modeling
+          - categorical_variables_embeddings
+      main: modeling.models.rnn.rnn_tuning_guild
+      requires:
+        - file: ../../../data
+        - file: ../../../submissions
+      flags:
+        run_type:
+          description: "Choose whether you want to evaluate, or predict by training from scratch/using already trained model."
+          choices: ["evaluate", "train_predict", "load_predict"]
+          default: "evaluate"
+        submission_name:
+          description: "Filename for the submission, if preparing one"
+          default: "submission.csv.gz"
+        embedding_type:
+          description: "Type of embedding to use"
+          choices: ["starspace", "wiki", "gensim"]
+          default: "starspace"
+        embedding_size:
+          description: "Size of the embeddings"
+          default: 50
+        embedding_epochs:
+          description: "Number of epochs for embeddings training"
+          default: 20
+        embedding_lr:
+          description: "Learning rate for embeddings training"
+          default: 0.02
+        average_dense_sets:
+          description: "Whether to average dense sets or concatenate them"
+          choices: [0, 1]
+          default: 1
+        num_epochs:
+          description: "Number of epochs"
+          default: 1
+        batch_size:
+          description: "Size of a batch"
+          default: 256
+        learning_rate:
+          description: "Learning rate"
+          default: 1e-5
+        pre_rnn_layers_num:
+          description: "Number of fully connected layers before RNN input"
+          default: 2
+        pre_rnn_dim:
+          description: "Size of pre RNN FC layers"
+          default: 376
+        rnn_module:
+          description: "RNN module to be used"
+          choices: ["rnn", "lstm", "gru"]
+          default: "gru"
+        rnn_layers_num:
+          description: "Number of inner RNN layers"
+          default: 1
+        rnn_input_dim:
+          description: "Size of rnn input"
+          default: 188
+        rnn_hidden_output_dim:
+          description: "Size of RNN hidden/output layers"
+          default: 188
+        rnn_initialize_memory_gate_bias:
+          description: "Whether to use the trick to make RNN remember more at the beggining"
+          choices: [0, 1]
+          default: 1
+        post_rnn_layers_num:
+          description: "Number of fully connected layers after RNN output"
+          default: 2
+        post_rnn_dim:
+          description: "Size of post RNN FC layers"
+          default: 188
+        pre_output_dim:
+          description: "Size of the last layer before the output"
+          default: 94
+    tune_rnn_iter_1:
+      sourcecode: no
+      steps:
+        - run: train_rnn
+            embedding_type=["gensim","wiki"]
+            embedding_size=[1:100]
+            embedding_epochs=[5:50]
+            embedding_lr=loguniform[1e-3:1.0]
+            average_dense_sets=[0,1]
+            num_epochs=10
+            batch_size=512
+            learning_rate=loguniform[1e-6:1e-3]
+            pre_rnn_layers_num=[1:5]
+            pre_rnn_dim=[20:500]
+            rnn_module=["gru","lstm","rnn"]
+            rnn_layers_num=[1:5]
+            rnn_input_dim=[20:500]
+            rnn_hidden_output_dim=[20:500]
+            rnn_initialize_memory_gate_bias=[0,1]
+            post_rnn_layers_num=[1:5]
+            post_rnn_dim=[20:500]
+            pre_output_dim=[20:500]
+            run_type="evaluate"
+            --max-trials 150
+            --optimizer gp
+    tune_rnn_iter_2:
+      sourcecode: no
+      steps:
+        - run: train_rnn
+            embedding_type="wiki"
+            embedding_size=300
+            embedding_epochs=1
+            embedding_lr=1
+            average_dense_sets=1
+            num_epochs=1
+            batch_size=[750:1000]
+            learning_rate=[0.0003:0.0004]
+            pre_rnn_layers_num=1
+            pre_rnn_dim=[400:1200]
+            rnn_module="gru"
+            rnn_layers_num=1
+            rnn_input_dim=[250:800]
+            rnn_hidden_output_dim=[500:1500]
+            rnn_initialize_memory_gate_bias=1
+            post_rnn_layers_num=1
+            post_rnn_dim=[1:100]
+            pre_output_dim=[1:20]
+            run_type="evaluate"
+            --max-trials 150
+            --optimizer gp
+    tune_rnn_iter_3:
+      sourcecode: no
+      steps:
+        - run: train_rnn
+            embedding_type="wiki" \
+            embedding_size=300 \
+            embedding_epochs=1 \
+            embedding_lr=1 \
+            average_dense_sets=1 \
+            num_epochs=15 \
+            batch_size=256 \
+            learning_rate=[1e-6:1e-5] \
+            pre_rnn_layers_num=1 \
+            pre_rnn_dim=[400:1200] \
+            rnn_module="gru" \
+            rnn_layers_num=1 \
+            rnn_input_dim=[250:800] \
+            rnn_hidden_output_dim=[500:1500] \
+            rnn_initialize_memory_gate_bias=1 \
+            post_rnn_layers_num=1 \
+            post_rnn_dim=[500:1500] \
+            pre_output_dim=[1:20] \
+            run_type="evaluate" \
+            --max-trials 150 \
+            --optimizer gp

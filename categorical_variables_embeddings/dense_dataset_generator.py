@@ -57,3 +57,11 @@ class DenseDatasetGenerator(ABC):
     def _extract_processed_sentences(dataset, sentence_attr):
         raw_sentences = dataset[sentence_attr].tolist()
         return SentencesProcessorIterator(raw_sentences)
+
+
+class DenseDatasetGeneratorParametrized(DenseDatasetGenerator, ABC):
+    def __init__(self, embedding_size, num_epochs, learning_rate):
+        super(DenseDatasetGeneratorParametrized, self).__init__()
+        self.embedding_size = embedding_size
+        self.num_epochs = num_epochs
+        self.learning_rate = learning_rate
